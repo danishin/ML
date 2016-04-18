@@ -5,6 +5,7 @@ import grizzled.slf4j.Logger
 import io.prediction.controller.{EmptyEvaluationInfo, PDataSource, Params}
 import io.prediction.data.store.PEventStore
 import org.apache.spark.SparkContext
+import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.rdd.RDD
 
 // PredictionIO automatically loads the parameters of `datasource` specified in `engine.json`
@@ -47,29 +48,35 @@ class DataSource(params: DataSourceParams) extends PDataSource[TrainingData, Emp
 
   def readTraining(sc: SparkContext): TrainingData = TrainingData(getRatings(sc))
 
+  /**
+    * In recommendation evaluation, the raw data is a sequence of known ratings.
+    * A rating has 3 components: user, item and a score.
+    * We use k-fold method for evaluation. The raw data is sliced into a sequence of (training, validation) data tuple.
+    *
+    * In the validation data, we construct a query for each user, and get a list of recommended items from the engine.
+    * It is vastly different from the classification tutorial, where there is a one-to-one corresponding between the training data point and the validation data point.
+    * In this evaluation, our unit of evaluation is user. We evaluate the quality of an engine using the known rating of a user.
+    */
   override def readEval(sc: SparkContext): Seq[(TrainingData, EmptyEvaluationInfo, RDD[(Query, ActualResult)])] = {
-    import dase.implicits._
-
     require(params.evalParams.nonEmpty, "Must specify evalParams")
 
     val evalParams = params.evalParams.get
 
     val kFold = evalParams.kFold
     val ratings = getRatings(sc)
-      .zipWithUniqueId
-      .cache()
 
-    (0 until kFold).map { idx =>
-      val (trainingRatings, testingRatings) = ratings.mapPartition(_._2 % kFold == idx)(_._1)
+    MLUtils.kFold(ratings, kFold, 0)
+      .map { case (training, testing) =>
+        (
+          TrainingData(training),
+          new EmptyEvaluationInfo(),
+          // we group ratings by user, and one query is constructed for each user
+          testing
+            .groupBy(_.user)
+            .map { case (user, groupedRatings) => (Query(user, evalParams.queryNum), ActualResult(groupedRatings.toArray)) }
+          )
+      }
 
-      (
-        TrainingData(trainingRatings),
-        new EmptyEvaluationInfo(),
-        testingRatings
-          .groupBy(_.user)
-          .map { case (user, groupedRatings) => (Query(user, evalParams.queryNum), ActualResult(groupedRatings.toArray)) }
-      )
-    }
   }
 }
 
