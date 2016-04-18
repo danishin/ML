@@ -1,0 +1,6 @@
+target/
+.DS_Store
+.idea
+.idea_modules
+Playground.sc
+resources

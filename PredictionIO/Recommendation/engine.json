@@ -1,0 +1,26 @@
+{
+  "id": "default",
+  "description": "Default settings",
+  "engineFactory": "engine.RecommendationEngine",
+  "datasource": {
+    "params" : {
+      "appName": "Recommendation"
+    }
+  },
+  "algorithms": [
+    {
+      "name": "als",
+      "params": {
+        "rank": 10,
+        "numIterations": 15,
+        "lambda": 0.01,
+        "seed": 3
+      }
+    }
+  ],
+  "preparator": {
+    "params": {
+      "excludeItemsFilePath": "./data/sample_not_train_text.txt"
+    }
+  }
+}
