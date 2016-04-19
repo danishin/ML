@@ -1,0 +1,6 @@
+manifest.json
+target/
+pio.log
+/pio.sbt
+Playground.sc
+.idea
