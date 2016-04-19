@@ -1,7 +1,7 @@
 package engine
 
-import dase.algorithm.{ALSAlgorithm, CooccurrenceAlgorithm}
-import dase.data.{DataSource, DataPreparator}
+import dase.algorithm.{ALSAlgorithm, CooccurrenceAlgorithm, UserLikeItemAlgorithm, UserViewItemAlgorithm}
+import dase.data.{DataPreparator, DataSource}
 import dase.serving.Serving
 import io.prediction.controller.{Engine, EngineFactory}
 
@@ -18,8 +18,8 @@ object SimilarProductEngine extends EngineFactory {
       Map("" -> classOf[DataSource]),
       Map("" -> classOf[DataPreparator]),
       Map(
-        "als" -> classOf[ALSAlgorithm],
-        "cooccurrence" -> classOf[CooccurrenceAlgorithm]
+        "user-view-item" -> classOf[UserViewItemAlgorithm],
+        "user-like-item" -> classOf[UserLikeItemAlgorithm]
       ),
       Map("" -> classOf[Serving])
     )

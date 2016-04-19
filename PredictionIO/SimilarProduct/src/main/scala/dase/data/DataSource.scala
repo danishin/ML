@@ -6,16 +6,18 @@ import io.prediction.controller._
 import io.prediction.data.store.PEventStore
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.joda.time.DateTime
 
 case class DataSourceParams(appName: String) extends Params
 
 case class User()
 case class Item(categories: Option[List[String]])
-case class ViewEvent(user: String, item: String, t: Long)
+case class ViewEvent(user: String, item: String, time: DateTime)
+case class LikeEvent(user: String, item: String, time: DateTime, like: Boolean)
 
-case class TrainingData(users: RDD[(String, User)], items: RDD[(String, Item)], viewEvents: RDD[ViewEvent]) extends SanityCheck {
+case class TrainingData(users: RDD[(String, User)], items: RDD[(String, Item)], viewEvents: RDD[ViewEvent], likeEvents: RDD[LikeEvent]) extends SanityCheck {
   override def toString =
-    s"users: [${users.count()} (${users.take(2).toList}...)] items: [${items.count()} (${items.take(2).toList}...)] viewEvents: [${viewEvents.count()}] (${viewEvents.take(2).toList}...)"
+    s"users: [${users.count()} (${users.take(2).toList}...)] items: [${items.count()} (${items.take(2).toList}...)] viewEvents: [${viewEvents.count()}] (${viewEvents.take(2).toList}...) likeEvents: [${likeEvents.count()} (${likeEvents.take(2).toList})]"
 
   def sanityCheck(): Unit = {
     require(!users.isEmpty() && !items.isEmpty() && !viewEvents.isEmpty(), "users & items & viewEvents cannot be empty")
@@ -23,7 +25,7 @@ case class TrainingData(users: RDD[(String, User)], items: RDD[(String, Item)], 
 }
 
 class DataSource(params: DataSourceParams) extends PDataSource[TrainingData, EmptyEvaluationInfo, Query, EmptyActualResult] {
-  @transient lazy val logger = Logger[this.type]
+  @transient private lazy val logger = Logger[this.type]
 
   def readTraining(sc: SparkContext): TrainingData = {
     // create a RDD of (entityID, User)
@@ -59,15 +61,28 @@ class DataSource(params: DataSourceParams) extends PDataSource[TrainingData, Emp
           case "view" => ViewEvent(
             user = event.entityId,
             item = event.targetEntityId.get,
-            t = event.eventTime.getMillis
+            time = event.eventTime
           )
-          case _ =>
-            logger.error(s"Cannot convert $event to ViewEvent")
-            throw new RuntimeException(s"Unexpected event $event is read.")
+          case _ => throw new RuntimeException(s"Unexpected event $event is read.")
         })
         .cache()
 
-    TrainingData(usersRDD, itemsRDD, viewEventsRDD)
+    // get all "user" "like" and "dislike" "item" events
+    val likeEventsRDD =
+      PEventStore
+      .find(
+        appName = params.appName,
+        entityId = Some("user"),
+        eventNames = Some(List("like", "dislike")),
+        targetEntityType = Some(Some("item"))
+      )(sc)
+      .map(event => event.event match {
+        case "like" => LikeEvent(event.entityId, event.targetEntityId.get, event.eventTime, true)
+        case "dislike" => LikeEvent(event.entityId, event.targetEntityId.get, event.eventTime, false)
+        case _ => throw new RuntimeException(s"Unexpected event $event is read.")
+      })
+
+    TrainingData(usersRDD, itemsRDD, viewEventsRDD, likeEventsRDD)
   }
 }
 

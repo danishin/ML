@@ -1,11 +1,11 @@
-package org.template.similarproduct
+package algorithm
 
 import dase.algorithm.{CooccurrenceAlgorithm, CooccurrenceAlgorithmParams, CooccurrenceModel}
 import dase.data.{Item, ViewEvent}
 import engine.{ItemScore, PredictedResult, Query}
 import io.prediction.data.storage.BiMap
-import org.scalatest.FlatSpec
-import org.scalatest.Matchers
+import org.scalatest.{FlatSpec, Matchers}
+import org.template.similarproduct.EngineTestSparkContext
 
 class CooccurrenceAlgorithmTest
   extends FlatSpec with EngineTestSparkContext with Matchers {
@@ -20,26 +20,26 @@ class CooccurrenceAlgorithmTest
     "i3" -> 3
   ))
 
-  val viewSeq = Seq(
-    ViewEvent("u0", "i0", 1000010),
-    ViewEvent("u0", "i1", 1000020),
-    ViewEvent("u0", "i1", 1000020),
-    ViewEvent("u1", "i1", 1000030),
-    ViewEvent("u1", "i2", 1000040),
-    ViewEvent("u1", "i3", 1000040),
-    ViewEvent("u2", "i2", 1000040),
-    ViewEvent("u2", "i1", 1000040),
-    ViewEvent("u3", "i1", 1000040),
-    ViewEvent("u3", "i2", 1000040),
-    ViewEvent("u3", "i0", 1000040),
-    ViewEvent("u4", "i2", 1000040),
-    ViewEvent("u4", "i3", 1000040),
-    ViewEvent("u5", "i0", 1000040),
-    ViewEvent("u5", "i1", 1000040),
-    ViewEvent("u6", "i0", 1000040),
-    ViewEvent("u6", "i1", 1000040),
-    ViewEvent("u7", "i4", 1000050), //Unknown item
-    ViewEvent("u7", "i3", 1000050)
+  val viewSeq = Seq[ViewEvent](
+//    ViewEvent("u0", "i0", 1000010),
+//    ViewEvent("u0", "i1", 1000020),
+//    ViewEvent("u0", "i1", 1000020),
+//    ViewEvent("u1", "i1", 1000030),
+//    ViewEvent("u1", "i2", 1000040),
+//    ViewEvent("u1", "i3", 1000040),
+//    ViewEvent("u2", "i2", 1000040),
+//    ViewEvent("u2", "i1", 1000040),
+//    ViewEvent("u3", "i1", 1000040),
+//    ViewEvent("u3", "i2", 1000040),
+//    ViewEvent("u3", "i0", 1000040),
+//    ViewEvent("u4", "i2", 1000040),
+//    ViewEvent("u4", "i3", 1000040),
+//    ViewEvent("u5", "i0", 1000040),
+//    ViewEvent("u5", "i1", 1000040),
+//    ViewEvent("u6", "i0", 1000040),
+//    ViewEvent("u6", "i1", 1000040),
+//    ViewEvent("u7", "i4", 1000050), //Unknown item
+//    ViewEvent("u7", "i3", 1000050)
   )
 
   "trainCooccurrence" should "return top 10 correctly" in {

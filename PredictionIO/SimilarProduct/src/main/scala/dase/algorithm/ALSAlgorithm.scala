@@ -6,7 +6,8 @@ import grizzled.slf4j.Logger
 import io.prediction.controller.{P2LAlgorithm, Params}
 import io.prediction.data.storage.BiMap
 import org.apache.spark.SparkContext
-import org.apache.spark.mllib.recommendation.{ALS, Rating => MLlibRating}
+import org.apache.spark.mllib.recommendation.{ALS, Rating}
+import org.apache.spark.rdd.RDD
 
 case class ALSAlgorithmParams(rank: Int, numIterations: Int, lambda: Double, seed: Option[Long]) extends Params
 
@@ -24,8 +25,16 @@ class ALSModel(val productFeatures: Map[Int, Array[Double]], val itemStringIntMa
 
 /**
   * Use ALS to build item x feature matrix
+  *
+  * This algorithm uses user-to-item view events as training data.
+  * However, your application may have more than one type of events which you want to take into account, such as buy, rate and like events.
+  * One way to incorporate other types of events to improve the system is to add another algorithm to process these events, build a separated model and then combine the outputs of multiple algorithms during Serving.
   */
-class ALSAlgorithm(params: ALSAlgorithmParams) extends P2LAlgorithm[PreparedData, ALSModel, Query, PredictedResult] {
+trait ALSAlgorithm extends P2LAlgorithm[PreparedData, ALSModel, Query, PredictedResult] {
+  protected def params: ALSAlgorithmParams
+
+  def calculateRatings(data: PreparedData, userStringIntMap: BiMap[String, Int], itemStringIntMap: BiMap[String, Int]): RDD[Rating]
+
   @transient lazy val logger = Logger[this.type]
 
   /*
@@ -49,14 +58,7 @@ class ALSAlgorithm(params: ALSAlgorithmParams) extends P2LAlgorithm[PreparedData
       .collectAsMap
       .toMap
 
-    val mllibRatings = data.viewEvents
-      .flatMap(viewEvent => for {
-        uindex <- userStringIntMap.get(viewEvent.user)
-        iindex <- itemStringIntMap.get(viewEvent.item)
-      } yield ((uindex, iindex), 1))
-      .reduceByKey(_ + _) // aggregate all view events of same user-item pair
-      .map { case ((u, i), v) => MLlibRating(u, i, v) } // MLlibRating requires integer index for user and item
-      .cache()
+    val mllibRatings = calculateRatings(data, userStringIntMap, itemStringIntMap)
 
     // MLLib ALS cannot handle empty training data.
     require(!mllibRatings.isEmpty(), "mllibRatings cannot be empty. Please check if your events contain valid user and item ID.")

@@ -9,9 +9,18 @@
   },
   "algorithms": [
     {
-      "name": "als",
+      "name": "user-view-item",
       "params": {
         "rank": 10,
+        "numIterations" : 15,
+        "lambda": 0.01,
+        "seed": 3
+      }
+    },
+    {
+      "name": "user-like-item",
+      "params": {
+        "rank": 8,
         "numIterations" : 15,
         "lambda": 0.01,
         "seed": 3
