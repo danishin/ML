@@ -10,7 +10,6 @@ import org.apache.spark.mllib.tree.RandomForest
 import org.apache.spark.mllib.tree.configuration.{Algo, Strategy}
 import org.apache.spark.mllib.tree.model.RandomForestModel
 
-
 /*
 * Decision Tree Parameters
 *
