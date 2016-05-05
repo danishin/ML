@@ -27,22 +27,18 @@ import io.prediction.controller.LServing
 * */
 class Serving extends LServing[Query, PredictedResult] {
   def serve(query: Query, predictedResults: Seq[PredictedResult]): PredictedResult = {
-    val standard: Seq[Array[ItemScore]] =
+    val standardized: Seq[Array[ItemScore]] =
       if (query.num == 1)
         predictedResults.map(_.itemScores)
       else
-        (predictedResults zip predictedResults.map(pr => breeze.stats.meanAndVariance(pr.itemScores.map(_.score))))
-          .map { case (pr, mv) =>
-            pr.itemScores.map { is =>
-              // standardize score (z-score)
-              // if standard deviation is 0 (when all items have the same score, meaning all items are ranking equally) return 0
-              val zScore = if (mv.stdDev == 0) 0 else (is.score - mv.mean) / mv.stdDev
-              ItemScore(is.item, zScore)
-            }
+        predictedResults
+          .map { pr =>
+            val mv = breeze.stats.meanAndVariance(pr.itemScores.map(_.score))
+            pr.itemScores.map(is => ItemScore(is.item, zscore(is.score, mv.mean, mv.stdDev)))
           }
 
-    // sum the standardized score if same item
-    val combined = standard
+    // sum the standardized score for same item
+    val combined: Array[ItemScore] = standardized
       .flatten
       .groupBy(_.item)
       .mapValues(_.map(_.score).sum)
@@ -53,4 +49,9 @@ class Serving extends LServing[Query, PredictedResult] {
 
     PredictedResult(combined)
   }
+
+  // standardize score (z-score)
+  // if standard deviation is 0 (when all items have the same score, meaning all items are ranking equally) return 0
+  private def zscore(score: Double, mean: Double, stdDev: Double) =
+    if (stdDev == 0) 0.0 else (score - mean) / stdDev
 }

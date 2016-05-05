@@ -10,7 +10,6 @@ libraryDependencies ++= {
     /* JAVA */
     "com.github.haifengl" % "smile-core" % SmileVersion,
     "com.github.haifengl" % "smile-plot" % SmileVersion,
-    "org.deeplearning4j" % "deeplearning4j-core" % "0.4-rc3.8",
 
     /* SCALA */
     "com.github.haifengl" %% "smile-scala" % SmileVersion,

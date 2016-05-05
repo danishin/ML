@@ -59,7 +59,8 @@ class NBModel(tfIdf: TFIDFModel, categoryMap: Map[Double, String], nb: NaiveBaye
     // Vectorize query
     val x = tfIdf.transform(doc)
 
-    val z = scoreArray.map(e => innerProduct(e._2, x.toArray) + e._1)
+    // TODO: wrap pi and theta in vector and matrix and do implicit class dot
+    val z = scoreArray.map { case (pi, theta) => innerProduct(theta, x.toArray) + pi }
 
     normalize(z.indices.map(k => exp(z(k) - z.max)).toArray)
   }

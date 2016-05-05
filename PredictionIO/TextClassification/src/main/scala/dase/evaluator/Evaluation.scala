@@ -1,7 +1,5 @@
 package dase.evaluator
 
-import dase.algorithm.{LRAlgorithmParams, NBAlgorithmParams}
-import dase.data.{DataSourceParams, DataPreparatorParams}
 import engine.{ActualResult, PredictedResult, Query, TextClassificationEngine}
 import io.prediction.controller._
 
