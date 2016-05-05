@@ -6,7 +6,8 @@ import breeze.linalg.{DenseMatrix, DenseVector}
 import dase.data.{DataView, Indicator, PreparedData, RSIIndicator}
 import engine.{PredictedResult, Query}
 import nak.regress.LinearRegression
-import io.prediction.controller.{LAlgorithm, Params}
+import io.prediction.controller.{LAlgorithm, P2LAlgorithm, Params}
+import org.apache.spark.SparkContext
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.regression.{LabeledPoint, LinearRegressionWithSGD}
 import org.apache.spark.rdd.RDD
@@ -17,10 +18,10 @@ import scala.collection.immutable.HashMap
 
 /** Regression Strategy parameters case class
   *
-  * @param rsiIndicators a sequence of Indicators
+  * @param indicators a sequence of Indicators
   * @param maxTrainingWindowSize maximum window size of price frame desired for training
   */
-case class RegressionStrategyParams(rsiIndicators: Seq[RSIIndicator], maxTrainingWindowSize: Int) extends Params
+case class RegressionStrategyParams(indicators: Seq[Indicator], maxTrainingWindowSize: Int) extends Params
 
 class RegressionStrategyModel(tickerCoefficientMap: Map[String, DenseVector[Double]], priceFrame: Frame[LocalDate, String, Double]) extends Serializable {
   private lazy val tickers = tickerCoefficientMap.keys.toSet
@@ -30,7 +31,7 @@ class RegressionStrategyModel(tickerCoefficientMap: Map[String, DenseVector[Doub
     else {
       val prices = priceFrame.firstCol(ticker)
 
-      val rsiArray = params.rsiIndicators.map { indicator =>
+      val rsiArray = params.indicators.map { indicator =>
         val windowedPriceSeries = prices.splitBy(date)._1.tail(indicator.getMinWindowSize)
         indicator.getOne(windowedPriceSeries.mapValues(math.log))
       }.toArray
@@ -48,11 +49,10 @@ class RegressionStrategyModel(tickerCoefficientMap: Map[String, DenseVector[Doub
 /**
   * Creates a linear model for each stock using a vector comprised of the 1-day, 1-week, and 1-month return of the stock
   */
-class RegressionStrategy(implicit params: RegressionStrategyParams) extends LAlgorithm[PreparedData, RegressionStrategyModel, Query, PredictedResult] {
+class RegressionStrategy(implicit params: RegressionStrategyParams) extends P2LAlgorithm[PreparedData, RegressionStrategyModel, Query, PredictedResult] {
   import common.implicits._
 
-  // Apply regression algorithm on complete dataset to create a model
-  def train(pd: PreparedData): RegressionStrategyModel = {
+  def train(sc: SparkContext, pd: PreparedData): RegressionStrategyModel = {
     // Regress on specific ticker
     def regress(windowedRSIArray: Seq[Series[LocalDate, Double]], returnFor1Day: Series[LocalDate, Double]): DenseVector[Double] = {
       val array = windowedRSIArray.map(_.toVec.contents).reduce(_ ++ _) ++ Array.fill(returnFor1Day.length)(1.0)
@@ -76,17 +76,40 @@ class RegressionStrategy(implicit params: RegressionStrategyParams) extends LAlg
       LinearRegression.regress(observations, outputs)
     }
 
-    val stockTimeSeriesFrame = pd.stocksTimeSeriesFrameB.value
+    val stockTimeSeries = pd.stockTimeSeries
 
     // price: row is time, col is ticker, values are prices
     //    val price = dataView.priceFrame(params.maxTrainingWindowSize)
     //    val logPrice = price.mapValues(math.log)
-//    val active = dataView.activeFrame(params.maxTrainingWindowSize)
+    //    val active = dataView.activeFrame(params.maxTrainingWindowSize)
 
     // value used to query prediction results
 
+
+    stockTimeSeries
+      .filter(_._2.forall(_.active))
+      .map { case (ticker, timeSeries) =>
+        val prices = timeSeries.mapValues(_.adjClose)
+
+        val trainingData = params.indicators.map(_.getTraining(prices).toSeq.map(_._2))
+        val windowedRSIArr = trainingData.map(_.slice(???, ???))
+
+        val returns: Series[LocalDate, Double] = {
+          val day = 1
+          val logPrices = prices.mapValues(math.log)
+
+          // calculate return with offset of 1 day
+          (logPrices - logPrices.shift(-day)).fillNA(_ => 0.0)
+        }
+
+
+
+        regress(windowedRSIArr, returns)
+      }
+
+
     // TODO: Need to slice using max training window size?
-    val price = stockTimeSeriesFrame.mapValues(_.adjClose)
+    val price = stockTimeSeries.mapValues(_.adjClose)
     val returnFor1Day: Frame[LocalDate, String, Double] = {
       val day = 1
       val logPrice = price.mapValues(math.log)
@@ -96,17 +119,17 @@ class RegressionStrategy(implicit params: RegressionStrategyParams) extends LAlg
     }
 
     // Get max period from series of indicators
-    val firstIdx = params.rsiIndicators.map(_.getMinWindowSize).max + 3
+    val firstIdx = params.indicators.map(_.getMinWindowSize).max + 3
     val lastIdx = returnFor1Day.rowIx.length
 
     // Get array of ticker strings
-//    val tickers = returnFor1Day.colIx.toVec.contents
+    //    val tickers = returnFor1Day.colIx.toVec.contents
     // TODO: START FROM HERE!!!!
-    val activeTickers = stockTimeSeriesFrame.toColSeq.collect { case (ticker, timeSeries) if timeSeries.forall(_.active) => ticker }
+    val activeTickers = stockTimeSeries.toColSeq.collect { case (ticker, timeSeries) if timeSeries.forall(_.active) => ticker }
 
     activeTickers
       .map { ticker =>
-        val rsiArr = params.rsiIndicators.map(_.getTraining(price.firstCol(ticker)))
+        val rsiArr = params.indicators.map(_.getTraining(price.firstCol(ticker)))
         val windowedRSIArray = rsiArr.map(_.slice(firstIdx, lastIdx))
 
         val model = regress(
@@ -118,16 +141,16 @@ class RegressionStrategy(implicit params: RegressionStrategyParams) extends LAlg
       }
 
     // For each active ticker, pass in trained series into regress
-//    val tickerModelMap = tickers
-//      .filter(ticker => active.firstCol(ticker).findOne(_ == false) == -1)
-//      .map { ticker =>
-//        val model = regress(
-//          calcIndicator(price.firstCol(ticker)).map(_.slice(firstIdx, lastIdx)),
-//          returnFor1Day.firstCol(ticker).slice(firstIdx, lastIdx)
-//        )
-//
-//        (ticker, model)
-//      }.toMap
+    //    val tickerModelMap = tickers
+    //      .filter(ticker => active.firstCol(ticker).findOne(_ == false) == -1)
+    //      .map { ticker =>
+    //        val model = regress(
+    //          calcIndicator(price.firstCol(ticker)).map(_.slice(firstIdx, lastIdx)),
+    //          returnFor1Day.firstCol(ticker).slice(firstIdx, lastIdx)
+    //        )
+    //
+    //        (ticker, model)
+    //      }.toMap
 
     // tickers mapped to model
     tickerModelMap

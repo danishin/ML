@@ -9,6 +9,8 @@ import org.saddle.scalar.{NA, Scalar}
 import org.saddle.{Frame, Index, ORD, ST, Series, Vec}
 
 package object data {
+  import common.implicits._
+
   case class Daily(close: Double, adjClose: Double, adjReturn: Double, volume: Double, active: Boolean)
   object Daily {
     def empty = Daily(0.0, 0.0, 0.0, 0.0, false)
@@ -73,6 +75,4 @@ package object data {
         .sliceBy(fromDate, toDate)
     }
   }
-
-  type StocksTimeSeriesFrame = Frame[LocalDate, String, Daily]
 }

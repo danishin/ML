@@ -7,25 +7,24 @@ import engine.{ActualResult, Query}
 import io.prediction.controller.{PDataSource, Params}
 import io.prediction.data.store.PEventStore
 import org.apache.spark.SparkContext
-import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
-import org.json4s._
-import org.saddle.Frame
+import org.json4s.JObject
 
 case class YahooDataSourceParams(appName: String, entityType: String, fromDate: LocalDate, toDate: LocalDate, marketTicker: String, tickerList: Seq[String], maxTestingWindowSize: Int) extends Params
 
-case class TrainingData(stocksTimeSeriesFrameB: Broadcast[StocksTimeSeriesFrame])
+case class TrainingData(stockTimeSeries: RDD[(String, StockTimeSeries)])
 
 class YahooDataSource(params: YahooDataSourceParams) extends PDataSource[TrainingData, EvaluationInfo, Query, AnyRef] {
   private val timezone = ZoneId.of("US/Eastern")
 
-  private def getStocksTimeSeriesFrame(implicit sc: SparkContext): StocksTimeSeriesFrame = {
+  private def readStockTimeSeries(implicit sc: SparkContext): RDD[(String, StockTimeSeries)] = {
     val marketTimeSeries =
-      PEventStore.find(
-        appName = params.appName,
-        entityType = Some(params.entityType),
-        entityId = Some(params.marketTicker) // // Only extracts market ticker as the main reference of market hours
-      )(sc)
+      PEventStore
+        .find(
+          appName = params.appName,
+          entityType = Some(params.entityType),
+          entityId = Some(params.marketTicker) // Only extracts market ticker as the main reference of market hours
+        )(sc)
         .map(event => StockTimeSeries.from(event.properties.get[JObject]("yahoo"), params.fromDate, params.toDate, checkContinuous = true))
         .first()
 
@@ -34,41 +33,39 @@ class YahooDataSource(params: YahooDataSourceParams) extends PDataSource[Trainin
       .map(ticker => ticker -> StockTimeSeries.empty(marketTimeSeries.index))
 
     val tickers = params.tickerList :+ params.marketTicker
-    val tickerArr =
-      PEventStore.find(
+
+    PEventStore
+      .find(
         appName = params.appName,
         entityType = Some(params.entityType)
       )(sc)
-        .collect { case e if tickers.contains(e.entityId) =>
-          val dailyTimeSeries = StockTimeSeries.from(e.properties.get[JObject]("yahoo"), params.fromDate, params.toDate, checkContinuous = false)
-          val marketAlignedTimeSeries = marketTimeSeries.alignAndFill(dailyTimeSeries)
-          e.entityId -> marketAlignedTimeSeries
-        }
-        .collect()
-
-     Frame(tickerArr: _*)
+      .collect { case e if tickers.contains(e.entityId) =>
+        val dailyTimeSeries = StockTimeSeries.from(e.properties.get[JObject]("yahoo"), params.fromDate, params.toDate, checkContinuous = false)
+        val marketAlignedTimeSeries = marketTimeSeries.alignAndFill(dailyTimeSeries)
+        e.entityId -> marketAlignedTimeSeries
+      }
   }
 
   def readTraining(implicit sc: SparkContext): TrainingData =
-    TrainingData(sc.broadcast(getStocksTimeSeriesFrame))
+    TrainingData(readStockTimeSeries)
 
   override def readEval(implicit sc: SparkContext): Seq[(TrainingData, EvaluationInfo, RDD[(Query, ActualResult)])] = {
-    val stocksTimeSeriesFrame = getStocksTimeSeriesFrame
+    val stockTimeSeries = readStockTimeSeries
 
-    // Broadcast it.
-    val stocksTimeSeriesFrameB = sc.broadcast(stocksTimeSeriesFrame)
+    val evalInfo: EvaluationInfo = ???
 
-    val evalInfo = EvaluationInfo(stocksTimeSeriesFrameB)
+    // TODO: What to do???
+    val tickers = stockTimeSeries.colIx.toSeq
 
-    val tickers = stocksTimeSeriesFrame.colIx.toSeq
-
-    stocksTimeSeriesFrame.rowIx.toVec
+    stockTimeSeries.rowIx.toVec
       .rolling(params.maxTestingWindowSize, { dates =>
-        val trainingData = TrainingData(stocksTimeSeriesFrameB)
+        val trainingData = TrainingData(stockTimeSeries)
         val queries  = sc.parallelize(dates.map(date => (Query(date, tickers), ActualResult())).toSeq)
         (trainingData, evalInfo, queries)
       })
       .toSeq
+
+    ???
   }
 }
 

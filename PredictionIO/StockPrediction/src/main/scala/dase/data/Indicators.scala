@@ -103,6 +103,8 @@ class RSIIndicator(rsiPeriod: Int = 14) extends Indicator {
   *          calculating a return
   */
 class ShiftsIndicator(period: Int) extends Indicator {
+  import common.implicits.localDateOrdering
+
   private def getRet(logPrice: Series[LocalDate, Double], frame: Int = period) =
    (logPrice - logPrice.shift(frame)).fillNA(_ => 0.0)
 
