@@ -1,11 +1,17 @@
 package dase.algorithm
 
-import dase.data.DataView
-import engine.PredictedResult
+import java.time.LocalDate
+
+import dase.data.PreparedData
 import io.prediction.controller.Params
+import org.apache.spark.SparkContext
 
 // Buy if l-days daily return is high than s-days daily-return
 case class MomentumStrategyParams(l: Int, s: Int) extends Params
+
+class MomentumStrategyModel extends StrategyModel {
+  def predict(date: LocalDate, ticker: String): Option[Double] = ???
+}
 
 /**
   * Momentum Investing
@@ -17,29 +23,31 @@ case class MomentumStrategyParams(l: Int, s: Int) extends Params
   *
   * LogPrice: A series of logarithm of all prices for a particular stock. Logarithm values are recommended for more accurate results.
   */
-class MomentumStrategy(params: MomentumStrategyParams) extends Strategy[AnyRef] {
-  def createModel(dataView: DataView): AnyRef = None
-
-  def onClose(model: AnyRef, query: QueryWithData): PredictedResult = {
-    val dataView = query.dataView
-
-    val priceFrame = dataView.priceFrame(params.l + 1)
-    val todayLogPrice = priceFrame.rowAt(params.l).mapValues(math.log)
-    val lLogPrice = priceFrame.rowAt(0).mapValues(math.log)
-    val sLogPrice = priceFrame.rowAt(params.l - params.s).mapValues(math.log)
-
-    val lLogReturn = (todayLogPrice - lLogPrice) / params.l
-    val sLogReturn = (todayLogPrice - sLogPrice) / params.s
-
-    val output = query.tickers
-      .map { ticker => {
-        val s = sLogReturn.first(ticker)
-        val l = lLogReturn.first(ticker)
-        val p = l - s
-        (ticker, p)
-      }}
-      .toMap
-
-    PredictedResult(output)
+class MomentumStrategy(params: MomentumStrategyParams) extends Strategy[MomentumStrategyModel] {
+  def train(sc: SparkContext, pd: PreparedData): MomentumStrategyModel = {
+    new MomentumStrategyModel
   }
+
+//  def onClose(model: AnyRef, query: QueryWithData): PredictedResult = {
+//    val dataView = query.dataView
+//
+//    val priceFrame = dataView.priceFrame(params.l + 1)
+//    val todayLogPrice = priceFrame.rowAt(params.l).mapValues(math.log)
+//    val lLogPrice = priceFrame.rowAt(0).mapValues(math.log)
+//    val sLogPrice = priceFrame.rowAt(params.l - params.s).mapValues(math.log)
+//
+//    val lLogReturn = (todayLogPrice - lLogPrice) / params.l
+//    val sLogReturn = (todayLogPrice - sLogPrice) / params.s
+//
+//    val output = query.tickers
+//      .map { ticker => {
+//        val s = sLogReturn.first(ticker)
+//        val l = lLogReturn.first(ticker)
+//        val p = l - s
+//        (ticker, p)
+//      }}
+//      .toMap
+//
+//    PredictedResult(output)
+//  }
 }

@@ -28,13 +28,20 @@ sealed trait Indicator extends Serializable {
     * @param input series of logarithm of all prices for a particular stock
     * @return the last value in the resulting series from the feature calculation
     */
-  def getOne(input: Series[LocalDate, Double]): Double
+  def getLast(input: Series[LocalDate, Double]): Double
 
   /** Returns window size to be used in getOne()
     *
     * @return the window size
     */
   def getMinWindowSize: Int
+}
+
+object Indicators {
+  def from(indicatorNames: Seq[String]): Seq[Indicator] = indicatorNames.map {
+    case "rsi" => new RSIIndicator()
+    case "shifts" => new ShiftsIndicator(???)
+  }
 }
 
 /** Indicator that implements a relative strength index formula
@@ -61,9 +68,17 @@ class RSIIndicator(rsiPeriod: Int = 14) extends Indicator {
 
   // Computes RSI of price data over the defined training window time frame
   def getTraining(logPrice: Series[LocalDate, Double]): Series[LocalDate, Double] = {
-    def getRet(dailyReturn: Series[LocalDate, Double]) =
-      (dailyReturn - dailyReturn.shift(1)).fillNA(_ => 0.0)
+    val rsiSeries = rsi(logPrice)
 
+    // Fill in first 14 days offset (due to `rolling`) with 50 to maintain results
+    rsiSeries.reindex(logPrice.rowIx).fillNA(_  => 50.0)
+  }
+
+    // Computes the RSI for the most recent time frame, returns single double
+  def getLast(logPrice: Series[LocalDate, Double]): Double =
+    getTraining(logPrice).last
+
+  private def rsi(logPriceSeries: Series[LocalDate, Double]): Series[LocalDate, Double] = {
     /**
       * RS = SMMA(U, n) / SMMA(D, n)
       *
@@ -72,31 +87,25 @@ class RSIIndicator(rsiPeriod: Int = 14) extends Indicator {
       * U is Upward change where up periods are characterized by the close being higher than the previous close and
       * D is Download change down periods are characterized by the close being lower than the previous period's close.
       */
-    def calcRS(logPrice: Series[LocalDate, Double]): Series[LocalDate, Double] = {
-      //Positive and Negative Vecs
-      val posSeries = logPrice.mapValues(x => if (x > 0) x else 0)
-      val negSeries = logPrice.mapValues(x => if (x < 0) x else 0)
+    def rs(priceSeries: Series[LocalDate, Double]): Series[LocalDate, Double] = {
+      val dailyReturnSeries = (priceSeries - priceSeries.shift(1)).fillNA(_ => 0.0)
 
-      //Get the sum of positive/negative Frame
-      val avgPosSeries = posSeries.rolling(rsiPeriod, _.mean)
-      val avgNegSeries = negSeries.rolling(rsiPeriod, _.mean)
+      val upSeries = dailyReturnSeries.mapValues(dailyReturn => if (dailyReturn > 0) dailyReturn else 0)
+      val downSeries = dailyReturnSeries.mapValues(dailyReturn => if (dailyReturn < 0) dailyReturn else 0)
 
-      avgPosSeries / avgNegSeries
+      val upMovingAverageSeries = upSeries.rolling(rsiPeriod, _.mean)
+      val downMovingAverageSeries = downSeries.rolling(rsiPeriod, _.mean)
+
+      upMovingAverageSeries / downMovingAverageSeries
     }
 
-    val rsSeries = calcRS(getRet(logPrice))
-    val rsiSeries = rsSeries.mapValues(rs => 100 - (100 / (1 + rs)))
+    val rsSeries = rs(logPriceSeries)
 
-    // Fill in first 14 days offset with 50 to maintain results
-    rsiSeries.reindex(logPrice.rowIx).fillNA(_  => 50.0)
+    rsSeries.mapValues(rs => 100 - (100 / (1 + rs)))
   }
-
-    // Computes the RSI for the most recent time frame, returns single double
-  def getOne(logPrice: Series[LocalDate, Double]): Double =
-    getTraining(logPrice).last
 }
 
-/** Indicator that calcuate differences of closing prices
+/** Indicator that calculate differences of closing prices
   *
   * @constructor create an instance of a ShiftsIndicator
   * @param period number of days between any 2 closing prices to consider for
@@ -113,6 +122,6 @@ class ShiftsIndicator(period: Int) extends Indicator {
   def getTraining(logPrice: Series[LocalDate, Double]): Series[LocalDate, Double] =
     getRet(logPrice)
 
-  def getOne(logPrice: Series[LocalDate, Double]): Double =
+  def getLast(logPrice: Series[LocalDate, Double]): Double =
     getRet(logPrice).last
 }

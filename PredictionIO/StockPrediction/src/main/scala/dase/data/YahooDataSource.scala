@@ -1,7 +1,8 @@
 package dase.data
 
-import java.time.{LocalDate, ZoneId}
+import java.time.ZoneId
 
+import dase.data.time_series.StockTimeSeries
 import dase.evaluator.EvaluationInfo
 import engine.{ActualResult, Query}
 import io.prediction.controller.{PDataSource, Params}
@@ -10,63 +11,57 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.json4s.JObject
 
-case class YahooDataSourceParams(appName: String, entityType: String, fromDate: LocalDate, toDate: LocalDate, marketTicker: String, tickerList: Seq[String], maxTestingWindowSize: Int) extends Params
+case class YahooDataSourceParams(appName: String, marketTicker: String, maxTestingWindowSize: Int) extends Params
 
 case class TrainingData(stockTimeSeries: RDD[(String, StockTimeSeries)])
 
-class YahooDataSource(params: YahooDataSourceParams) extends PDataSource[TrainingData, EvaluationInfo, Query, AnyRef] {
-  private val timezone = ZoneId.of("US/Eastern")
+class YahooDataSource(params: YahooDataSourceParams) extends PDataSource[TrainingData, EvaluationInfo, Query, ActualResult] {
+  private implicit val stockTimeZone = ZoneId.of("US/Eastern")
 
-  private def readStockTimeSeries(implicit sc: SparkContext): RDD[(String, StockTimeSeries)] = {
+  private def readStockTimeSeries(sc: SparkContext): RDD[(String, StockTimeSeries)] = {
     val marketTimeSeries =
       PEventStore
         .find(
           appName = params.appName,
-          entityType = Some(params.entityType),
+          entityType = Some("yahoo"),
           entityId = Some(params.marketTicker) // Only extracts market ticker as the main reference of market hours
         )(sc)
-        .map(event => StockTimeSeries.from(event.properties.get[JObject]("yahoo"), params.fromDate, params.toDate, checkContinuous = true))
+        .map(event => StockTimeSeries.from(event.properties.get[JObject]("yahoo"), checkContinuous = true))
         .first()
-
-    // TODO:
-    val defaultTickerMap = params.tickerList
-      .map(ticker => ticker -> StockTimeSeries.empty(marketTimeSeries.index))
-
-    val tickers = params.tickerList :+ params.marketTicker
 
     PEventStore
       .find(
         appName = params.appName,
-        entityType = Some(params.entityType)
+        entityType = Some("yahoo")
       )(sc)
-      .collect { case e if tickers.contains(e.entityId) =>
-        val dailyTimeSeries = StockTimeSeries.from(e.properties.get[JObject]("yahoo"), params.fromDate, params.toDate, checkContinuous = false)
+      .map { e =>
+        val dailyTimeSeries = StockTimeSeries.from(e.properties.get[JObject]("yahoo"), checkContinuous = false)
         val marketAlignedTimeSeries = marketTimeSeries.alignAndFill(dailyTimeSeries)
         e.entityId -> marketAlignedTimeSeries
       }
   }
 
-  def readTraining(implicit sc: SparkContext): TrainingData =
-    TrainingData(readStockTimeSeries)
+  def readTraining(sc: SparkContext): TrainingData =
+    TrainingData(readStockTimeSeries(sc))
 
-  override def readEval(implicit sc: SparkContext): Seq[(TrainingData, EvaluationInfo, RDD[(Query, ActualResult)])] = {
-    val stockTimeSeries = readStockTimeSeries
-
-    val evalInfo: EvaluationInfo = ???
-
-    // TODO: What to do???
-    val tickers = stockTimeSeries.colIx.toSeq
-
-    stockTimeSeries.rowIx.toVec
-      .rolling(params.maxTestingWindowSize, { dates =>
-        val trainingData = TrainingData(stockTimeSeries)
-        val queries  = sc.parallelize(dates.map(date => (Query(date, tickers), ActualResult())).toSeq)
-        (trainingData, evalInfo, queries)
-      })
-      .toSeq
-
-    ???
-  }
+//  override def readEval(implicit sc: SparkContext): Seq[(TrainingData, EvaluationInfo, RDD[(Query, ActualResult)])] = {
+//    val stockTimeSeries = readStockTimeSeries
+//
+//    val evalInfo: EvaluationInfo = ???
+//
+//    // TODO: What to do???
+//    val tickers = stockTimeSeries.colIx.toSeq
+//
+//    stockTimeSeries.rowIx.toVec
+//      .rolling(params.maxTestingWindowSize, { dates =>
+//        val trainingData = TrainingData(stockTimeSeries)
+//        val queries  = sc.parallelize(dates.map(date => (Query(date, tickers), ActualResult())).toSeq)
+//        (trainingData, evalInfo, queries)
+//      })
+//      .toSeq
+//
+//    ???
+//  }
 }
 
 //object PredefinedDSP {

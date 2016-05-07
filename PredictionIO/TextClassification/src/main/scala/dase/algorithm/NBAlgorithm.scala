@@ -79,7 +79,7 @@ class NBModel(tfIdf: TFIDFModel, categoryMap: Map[Double, String], nb: NaiveBaye
   }
 }
 
-class NBAlgorithm(params: NBAlgorithmParams) extends P2LAlgorithm[PreparedData, NBModel, Query, PredictedResult] {
+class NBAlgorithm(params: NBAlgorithmParams) extends P2LAlgorithm[PreparedDataNBModel, Query, PredictedResult] {
   def train(sc: SparkContext, data: PreparedData): NBModel =
     new NBModel(data.tfIdfModel, data.categoryMap, NaiveBayes.train(data.labeledPoints, params.lambda))
 

@@ -1,13 +1,5 @@
 package io.prediction.examples.stock
 
-import java.io.File
-
-import com.github.nscala_time.time.Imports._
-import dase.algorithm.{EmptyStrategy, MomentumStrategyParams, RegressionStrategy}
-import dase.data._
-import dase.evaluator.{BacktestingEvaluation, BacktestingEvaluationParams}
-import io.prediction.controller.{LFirstServing, PIdentityPreparator}
-
 //object Run {
 //  val sp500List = Vector(
 //    "A", "AA", "AAPL", "ABBV", "ABC", "ABT", "ACE", "ACN", "ACT", "ADBE", "ADI",

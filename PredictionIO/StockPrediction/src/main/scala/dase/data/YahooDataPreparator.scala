@@ -1,5 +1,6 @@
 package dase.data
 
+import dase.data.time_series.StockTimeSeries
 import io.prediction.controller.PPreparator
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD

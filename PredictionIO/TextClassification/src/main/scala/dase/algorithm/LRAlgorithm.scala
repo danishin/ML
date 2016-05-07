@@ -6,8 +6,7 @@ import grizzled.slf4j.Logger
 import io.prediction.controller.{P2LAlgorithm, Params}
 import org.apache.spark.SparkContext
 import org.apache.spark.ml.classification.LogisticRegression
-import org.apache.spark.mllib.classification.LogisticRegressionWithLBFGS
-import org.apache.spark.sql.{DataFrame, SQLContext, UserDefinedFunction, functions}
+import org.apache.spark.sql.{SQLContext, functions}
 
 /*
 * Generative vs Discriminative Algorithm

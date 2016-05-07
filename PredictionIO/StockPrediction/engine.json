@@ -1,0 +1,21 @@
+{
+  "id": "default",
+  "description": "Default settings",
+  "engineFactory": "engine.StockPredictionEngine",
+  "datasource": {
+    "name": "yahoo",
+    "params": {
+      "appName": "StockPrediction",
+      "marketTicker": "SPY",
+      "maxTestingWindowSize": 30
+    }
+  },
+  "algorithms": [
+    {
+      "name": "regression",
+      "params": {
+        "indicatorNames": ["rsi"]
+      }
+    }
+  ]
+}
